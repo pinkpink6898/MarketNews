@@ -6,6 +6,7 @@ import sys
 import json
 from urllib.request import urlopen, Request
 from urllib.error import URLError, HTTPError
+from urllib.parse import urlencode
 from datetime import datetime, timedelta
 
 def fetch_news():
@@ -28,15 +29,15 @@ def fetch_news():
     all_articles = []
     
     for query in queries:
-        url = (
-            f"https://newsapi.org/v2/everything?"
-            f"q={query}&"
-            f"from={yesterday}&"
-            f"language=en&"
-            f"sortBy=relevancy&"
-            f"pageSize=10&"
-            f"apiKey={api_key}"
-        )
+        params = urlencode({
+            "q": query,
+            "from": yesterday,
+            "language": "en",
+            "sortBy": "relevancy",
+            "pageSize": 10,
+            "apiKey": api_key,
+        })
+        url = f"https://newsapi.org/v2/everything?{params}"
         
         try:
             req = Request(url, headers={"User-Agent": "MarketNewsDigest/1.0"})

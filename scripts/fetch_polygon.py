@@ -47,46 +47,8 @@ def fetch_polygon_news():
     except (URLError, HTTPError) as e:
         print(f"Warning: Failed to fetch Polygon news: {e}", file=sys.stderr)
 
-    # Fetch previous day's gainers/losers via snapshot
-    snapshot_url = (
-        f"https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/gainers?"
-        f"apiKey={api_key}"
-    )
-
-    try:
-        req = Request(snapshot_url, headers={"User-Agent": "MarketNewsDigest/1.0"})
-        with urlopen(req, timeout=15) as response:
-            data = json.loads(response.read().decode())
-            for ticker in data.get("tickers", [])[:10]:
-                day = ticker.get("day", {})
-                results["gainers"].append({
-                    "ticker": ticker.get("ticker", ""),
-                    "change_percent": round(ticker.get("todaysChangePerc", 0), 2),
-                    "price": day.get("c", 0),
-                    "volume": day.get("v", 0),
-                })
-    except (URLError, HTTPError) as e:
-        print(f"Warning: Failed to fetch gainers: {e}", file=sys.stderr)
-
-    losers_url = (
-        f"https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/losers?"
-        f"apiKey={api_key}"
-    )
-
-    try:
-        req = Request(losers_url, headers={"User-Agent": "MarketNewsDigest/1.0"})
-        with urlopen(req, timeout=15) as response:
-            data = json.loads(response.read().decode())
-            for ticker in data.get("tickers", [])[:10]:
-                day = ticker.get("day", {})
-                results["losers"].append({
-                    "ticker": ticker.get("ticker", ""),
-                    "change_percent": round(ticker.get("todaysChangePerc", 0), 2),
-                    "price": day.get("c", 0),
-                    "volume": day.get("v", 0),
-                })
-    except (URLError, HTTPError) as e:
-        print(f"Warning: Failed to fetch losers: {e}", file=sys.stderr)
+    # Gainers/losers snapshot requires Polygon paid plan — skip gracefully on free tier
+    print("Note: Gainers/losers snapshot requires Polygon paid plan, skipping.", file=sys.stderr)
 
     print(json.dumps(results, indent=2, ensure_ascii=False))
 
