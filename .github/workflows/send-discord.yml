@@ -1,0 +1,38 @@
+name: Send Market Report to Discord
+
+on:
+  push:
+    paths:
+      - 'reports/**'
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Send report to Discord
+        run: |
+          REPORT=$(ls -t reports/*.txt 2>/dev/null | head -1)
+          if [ -z "$REPORT" ]; then
+            echo "No report found."
+            exit 1
+          fi
+
+          CONTENT=$(cat "$REPORT")
+          TOTAL=${#CONTENT}
+          OFFSET=0
+          CHUNK_SIZE=1900
+
+          while [ $OFFSET -lt $TOTAL ]; do
+            CHUNK="${CONTENT:$OFFSET:$CHUNK_SIZE}"
+            OFFSET=$((OFFSET + CHUNK_SIZE))
+            PAYLOAD=$(python3 -c "import json,sys; print(json.dumps({'content': sys.argv[1]}))" "$CHUNK")
+            curl -s -o /dev/null -w "%{http_code}" \
+              -H "Content-Type: application/json" \
+              -d "$PAYLOAD" \
+              "$DISCORD_WEBHOOK_URL"
+            sleep 1
+          done
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
