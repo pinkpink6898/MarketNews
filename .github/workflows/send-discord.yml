@@ -2,8 +2,6 @@ name: Send Market Report to Discord
 
 on:
   push:
-    branches:
-      - main
     paths:
       - 'reports/**'
 
@@ -15,7 +13,7 @@ jobs:
 
       - name: Send report to Discord
         run: |
-          REPORT=$(ls -t reports/*.txt 2>/dev/null | head -1)
+          REPORT=$(ls -t reports/* 2>/dev/null | head -1)
           if [ -z "$REPORT" ]; then
             echo "No report found."
             exit 1
