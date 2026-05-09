@@ -1,56 +1,54 @@
 #!/usr/bin/env python3
-"""Fetch market news and ticker data from Polygon.io."""
+"""Fetch market gainers/losers from Yahoo Finance — no API key required."""
 
-import os
 import sys
 import json
 from urllib.request import urlopen, Request
-from urllib.error import URLError, HTTPError
-from datetime import datetime, timedelta
+from datetime import datetime
 
-def fetch_polygon_news():
-    api_key = os.environ.get("POLYGON_API_KEY")
-    if not api_key:
-        print(json.dumps({"error": "POLYGON_API_KEY environment variable not set"}))
-        sys.exit(1)
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    "Accept": "application/json",
+}
 
-    results = {
-        "source": "Polygon.io",
-        "fetched_at": datetime.utcnow().isoformat() + "Z",
-        "news": [],
-        "gainers": [],
-        "losers": [],
-    }
-
-    # Fetch market news
-    news_url = (
-        f"https://api.polygon.io/v2/reference/news?"
-        f"limit=20&"
-        f"order=desc&"
-        f"sort=published_utc&"
-        f"apiKey={api_key}"
-    )
-
+def fetch_json(url):
     try:
-        req = Request(news_url, headers={"User-Agent": "MarketNewsDigest/1.0"})
-        with urlopen(req, timeout=15) as response:
-            data = json.loads(response.read().decode())
-            for article in data.get("results", []):
-                results["news"].append({
-                    "title": article.get("title", ""),
-                    "description": article.get("description", ""),
-                    "tickers": article.get("tickers", []),
-                    "source": article.get("publisher", {}).get("name", "Unknown"),
-                    "published_utc": article.get("published_utc", ""),
-                    "article_url": article.get("article_url", ""),
-                })
-    except (URLError, HTTPError) as e:
-        print(f"Warning: Failed to fetch Polygon news: {e}", file=sys.stderr)
+        req = Request(url, headers=HEADERS)
+        with urlopen(req, timeout=15) as resp:
+            return json.loads(resp.read().decode())
+    except Exception as e:
+        print(f"Warning: {url} failed: {e}", file=sys.stderr)
+        return None
 
-    # Gainers/losers snapshot requires Polygon paid plan — skip gracefully on free tier
-    print("Note: Gainers/losers snapshot requires Polygon paid plan, skipping.", file=sys.stderr)
+def parse_quotes(data):
+    if not data:
+        return []
+    quotes = (
+        data.get("finance", {})
+            .get("result", [{}])[0]
+            .get("quotes", [])
+    )
+    out = []
+    for q in quotes[:10]:
+        out.append({
+            "ticker": q.get("symbol", ""),
+            "change_percent": round(q.get("regularMarketChangePercent", {}).get("raw", 0), 2),
+            "price": q.get("regularMarketPrice", {}).get("raw", 0),
+            "volume": q.get("regularMarketVolume", {}).get("raw", 0),
+            "name": q.get("shortName", ""),
+        })
+    return out
 
+BASE = "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?formatted=true&region=US&lang=en-US&count=10&scrIds="
+
+def fetch_market_data():
+    results = {
+        "source": "Yahoo Finance",
+        "fetched_at": datetime.utcnow().isoformat() + "Z",
+        "gainers": parse_quotes(fetch_json(BASE + "day_gainers")),
+        "losers":  parse_quotes(fetch_json(BASE + "day_losers")),
+    }
     print(json.dumps(results, indent=2, ensure_ascii=False))
 
 if __name__ == "__main__":
-    fetch_polygon_news()
+    fetch_market_data()
