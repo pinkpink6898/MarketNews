@@ -13,11 +13,13 @@ jobs:
 
       - name: Send report to Discord
         run: |
-          REPORT=$(ls -t reports/* 2>/dev/null | head -1)
+          # Find the exact file added/changed in this commit
+          REPORT=$(git diff-tree --no-commit-id -r --name-only HEAD | grep "^reports/" | head -1)
           if [ -z "$REPORT" ]; then
-            echo "No report found."
+            echo "No report found in this commit."
             exit 1
           fi
+          echo "Sending report: $REPORT"
 
           CONTENT=$(cat "$REPORT")
           TOTAL=${#CONTENT}
