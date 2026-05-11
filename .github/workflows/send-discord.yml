@@ -13,10 +13,14 @@ jobs:
 
       - name: Send report to Discord
         run: |
-          # Find the exact file added/changed in this commit
-          REPORT=$(git diff-tree --no-commit-id -r --name-only HEAD | grep "^reports/" | head -1)
+          # Find today's report, or fall back to the most recent one
+          TODAY=$(date +%Y%m%d)
+          REPORT=$(git ls-tree -r HEAD --name-only | grep "^reports/.*${TODAY}" | sort -r | head -1)
           if [ -z "$REPORT" ]; then
-            echo "No report found in this commit."
+            REPORT=$(git ls-tree -r HEAD --name-only | grep "^reports/" | sort -r | head -1)
+          fi
+          if [ -z "$REPORT" ]; then
+            echo "No report found."
             exit 1
           fi
           echo "Sending report: $REPORT"
