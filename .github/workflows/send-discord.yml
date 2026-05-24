@@ -32,6 +32,12 @@ jobs:
             WEBHOOK="$DISCORD_WEBHOOK_POSTMARKET"
           fi
 
+          if [ -z "$WEBHOOK" ]; then
+            echo "ERROR: Webhook URL is empty. Check GitHub secret names."
+            exit 1
+          fi
+          echo "Webhook URL length: ${#WEBHOOK} chars"
+
           CONTENT=$(cat "$REPORT")
           TOTAL=${#CONTENT}
           OFFSET=0
