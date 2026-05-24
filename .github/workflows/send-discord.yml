@@ -25,6 +25,13 @@ jobs:
           fi
           echo "Sending report: $REPORT"
 
+          # Route to correct channel based on filename
+          if echo "$REPORT" | grep -q "premarket"; then
+            WEBHOOK="$DISCORD_WEBHOOK_PREMARKET"
+          else
+            WEBHOOK="$DISCORD_WEBHOOK_POSTMARKET"
+          fi
+
           CONTENT=$(cat "$REPORT")
           TOTAL=${#CONTENT}
           OFFSET=0
@@ -37,8 +44,9 @@ jobs:
             curl -s -o /dev/null -w "%{http_code}" \
               -H "Content-Type: application/json" \
               -d "$PAYLOAD" \
-              "$DISCORD_WEBHOOK_URL"
+              "$WEBHOOK"
             sleep 1
           done
         env:
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_WEBHOOK_PREMARKET: ${{ secrets.DISCORD_WEBHOOK_PREMARKET }}
+          DISCORD_WEBHOOK_POSTMARKET: ${{ secrets.DISCORD_WEBHOOK_POSTMARKET }}
