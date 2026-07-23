@@ -177,14 +177,24 @@ to work, **the report file must be pushed directly to `main`** — not left on a
 own session branch, or the Action never fires against the branch anyone actually looks at
 and the report silently never reaches `main`.
 
+Premarket and postmarket run as separate routines on independent schedules, each with its
+own session workspace that is not guaranteed to have the latest `main` at commit time. **Never
+use `--force`** — two routines racing each other with a force-push will silently clobber
+whichever one pushed first (force-push replaces the ref, it doesn't merge), which is exactly
+how postmarket reports kept vanishing from `main`. Instead, retry with a rebase on rejection:
+
 1. Write the report to `reports/premarket_YYYYMMDD.md` or `reports/postmarket_YYYYMMDD.md`
    (use today's date, matching the report type).
-2. Commit and push **directly to `main`**, regardless of what branch/ref the current session
-   started on:
+2. Commit, then push with a fetch-rebase-retry loop instead of forcing:
    ```bash
    git add reports/<filename>
-   git commit -m "report: <premarket|postmarket> YYYYMMDD"
-   git push origin HEAD:main
+   git commit -m "report: <premarket|postmarket> YYYYMMDD" || echo "nothing to commit"
+
+   for i in 1 2 3; do
+     git push origin HEAD:main && break
+     git fetch origin main
+     git rebase origin/main
+   done
    ```
 3. Verify the push landed on `main` (not a side branch) — e.g. `git ls-remote origin main`
    should show the commit you just made as the tip.
