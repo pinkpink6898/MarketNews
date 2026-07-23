@@ -42,17 +42,29 @@ jobs:
           TOTAL=${#CONTENT}
           OFFSET=0
           CHUNK_SIZE=1900
+          FAILED=0
 
           while [ $OFFSET -lt $TOTAL ]; do
             CHUNK="${CONTENT:$OFFSET:$CHUNK_SIZE}"
             OFFSET=$((OFFSET + CHUNK_SIZE))
             PAYLOAD=$(python3 -c "import json,sys; print(json.dumps({'content': sys.argv[1]}))" "$CHUNK")
-            curl -s -o /dev/null -w "%{http_code}" \
+            HTTP_CODE=$(curl -s -o /tmp/discord_response.txt -w "%{http_code}" \
               -H "Content-Type: application/json" \
               -d "$PAYLOAD" \
-              "$WEBHOOK"
+              "$WEBHOOK")
+            echo "Discord response: $HTTP_CODE"
+            if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+              echo "ERROR: Discord webhook returned $HTTP_CODE"
+              cat /tmp/discord_response.txt
+              FAILED=1
+            fi
             sleep 1
           done
+
+          if [ "$FAILED" -eq 1 ]; then
+            echo "One or more chunks failed to send to Discord."
+            exit 1
+          fi
         env:
           DISCORD_WEBHOOK_PREMARKET: ${{ secrets.DISCORD_WEBHOOK_PREMARKET }}
           DISCORD_WEBHOOK_POSTMARKET: ${{ secrets.DISCORD_WEBHOOK_POSTMARKET }}
