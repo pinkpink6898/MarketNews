@@ -168,29 +168,34 @@ meme-stock momentum, and notable calls from prominent traders.
 - If a piece of news has direct trading implications, say so briefly
 - Total length should be readable in ~2 minutes per report
 
-## Step 4: Send to Discord
+## Step 4: Commit the Report and Push to Discord
 
-The Discord webhook URL is stored in the `DISCORD_WEBHOOK_URL` environment variable.
+This repo delivers reports to Discord via a GitHub Action
+(`.github/workflows/send-discord.yml`) that triggers on push to `reports/**` and routes
+premarket vs. postmarket reports to separate Discord channels based on filename. For this
+to work, **the report file must be pushed directly to `main`** — not left on a routine's
+own session branch, or the Action never fires against the branch anyone actually looks at
+and the report silently never reaches `main`.
 
-Run the send script, which automatically splits long messages:
+1. Write the report to `reports/premarket_YYYYMMDD.md` or `reports/postmarket_YYYYMMDD.md`
+   (use today's date, matching the report type).
+2. Commit and push **directly to `main`**, regardless of what branch/ref the current session
+   started on:
+   ```bash
+   git add reports/<filename>
+   git commit -m "report: <premarket|postmarket> YYYYMMDD"
+   git push origin HEAD:main
+   ```
+3. Verify the push landed on `main` (not a side branch) — e.g. `git ls-remote origin main`
+   should show the commit you just made as the tip.
 
+The GitHub Action then splits the content at 2000-character boundaries and posts it to the
+correct webhook (`DISCORD_WEBHOOK_PREMARKET` or `DISCORD_WEBHOOK_POSTMARKET`) automatically.
+
+If you need to test delivery directly without going through git/Actions, you can still use
+the standalone script (reads `DISCORD_WEBHOOK_URL`):
 ```bash
-echo "<report_content>" | python3 /path/to/skill/scripts/send_discord.py
-```
-
-Or pass as argument:
-```bash
-python3 /path/to/skill/scripts/send_discord.py "<report_content>"
-```
-
-Discord has a 2000-character limit per message. The script handles splitting automatically,
-breaking at section boundaries (double newlines) so each chunk is self-contained.
-
-Alternatively, send directly via curl:
-```bash
-curl -H "Content-Type: application/json" \
-  -d "{\"content\": \"<report_content>\"}" \
-  "$DISCORD_WEBHOOK_URL"
+python3 scripts/send_discord.py "<report_content>"
 ```
 
 ## Step 5: Confirm Delivery
