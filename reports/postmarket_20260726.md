@@ -66,3 +66,4 @@
 • **財報（週一 7/27）**：Cadence Design Systems、Nucor、Welltower、Cincinnati Financial、UDR、Universal Health Services
 • **本週稍晚重頭戲**：FOMC 利率決議於**週三 7/29 下午2點(ET)**公布，市場預期維持3.50%-3.75%不變機率約64%，但因油價驅動的通膨疑慮，意外升息25bp機率升至約36%，為本週最大變數；Microsoft、Meta、Amazon、Apple、Coinbase等重量級財報將陸續於本週稍晚公布，AI資本支出指引將是延續本週核心敘事的觀察焦點
 • **持續追蹤**：胡塞武裝紅海油輪封鎖與伊朗地緣風險是否進一步升級，牽動油價與通膨/Fed政策路徑
+
