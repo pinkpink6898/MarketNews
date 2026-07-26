@@ -10,59 +10,82 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Send report to Discord
+      - name: Send report(s) to Discord
         run: |
-          # Find today's report, or fall back to the most recent one
-          TODAY=$(date +%Y%m%d)
-          REPORT=$(git ls-tree -r HEAD --name-only | grep "^reports/.*${TODAY}" | sort -r | head -1)
-          if [ -z "$REPORT" ]; then
-            REPORT=$(git ls-tree -r HEAD --name-only | grep "^reports/" | sort -r | head -1)
+          send_report() {
+            REPORT="$1"
+            if echo "$REPORT" | grep -q "premarket"; then
+              WEBHOOK="$DISCORD_WEBHOOK_PREMARKET"
+            else
+              WEBHOOK="$DISCORD_WEBHOOK_POSTMARKET"
+            fi
+
+            if [ -z "$WEBHOOK" ]; then
+              echo "ERROR: Webhook URL is empty for $REPORT. Check GitHub secret names."
+              return 1
+            fi
+
+            CONTENT=$(cat "$REPORT")
+            TOTAL=${#CONTENT}
+            OFFSET=0
+            CHUNK_SIZE=1900
+            FAILED=0
+
+            while [ $OFFSET -lt $TOTAL ]; do
+              CHUNK="${CONTENT:$OFFSET:$CHUNK_SIZE}"
+              OFFSET=$((OFFSET + CHUNK_SIZE))
+              PAYLOAD=$(python3 -c "import json,sys; print(json.dumps({'content': sys.argv[1]}))" "$CHUNK")
+              HTTP_CODE=$(curl -s -o /tmp/discord_response.txt -w "%{http_code}" \
+                -H "Content-Type: application/json" \
+                -d "$PAYLOAD" \
+                "$WEBHOOK")
+              echo "[$REPORT] Discord response: $HTTP_CODE"
+              if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+                echo "ERROR: Discord webhook returned $HTTP_CODE for $REPORT"
+                cat /tmp/discord_response.txt
+                FAILED=1
+              fi
+              sleep 1
+            done
+
+            return $FAILED
+          }
+
+          # Send exactly the report file(s) that this push actually added/modified,
+          # instead of re-deriving "the" report from the whole tree — a same-day
+          # premarket + postmarket pair would otherwise always resolve to whichever
+          # filename sorts alphabetically last ("premarket" > "postmarket").
+          BEFORE_SHA="${{ github.event.before }}"
+          if [ -z "$BEFORE_SHA" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            CHANGED=$(git show --name-only --diff-filter=AM --pretty=format: HEAD -- reports/ | grep -v '^$' || true)
+          else
+            CHANGED=$(git diff --name-only --diff-filter=AM "$BEFORE_SHA" HEAD -- reports/ || true)
           fi
-          if [ -z "$REPORT" ]; then
+
+          if [ -z "$CHANGED" ]; then
+            echo "No changed report files detected in this push; falling back to most recent."
+            CHANGED=$(git ls-tree -r HEAD --name-only | grep "^reports/" | sort -r | head -1)
+          fi
+
+          if [ -z "$CHANGED" ]; then
             echo "No report found."
             exit 1
           fi
-          echo "Sending report: $REPORT"
 
-          # Route to correct channel based on filename
-          if echo "$REPORT" | grep -q "premarket"; then
-            WEBHOOK="$DISCORD_WEBHOOK_PREMARKET"
-          else
-            WEBHOOK="$DISCORD_WEBHOOK_POSTMARKET"
-          fi
+          echo "Reports to send:"
+          echo "$CHANGED"
 
-          if [ -z "$WEBHOOK" ]; then
-            echo "ERROR: Webhook URL is empty. Check GitHub secret names."
-            exit 1
-          fi
-          echo "Webhook URL length: ${#WEBHOOK} chars"
-
-          CONTENT=$(cat "$REPORT")
-          TOTAL=${#CONTENT}
-          OFFSET=0
-          CHUNK_SIZE=1900
-          FAILED=0
-
-          while [ $OFFSET -lt $TOTAL ]; do
-            CHUNK="${CONTENT:$OFFSET:$CHUNK_SIZE}"
-            OFFSET=$((OFFSET + CHUNK_SIZE))
-            PAYLOAD=$(python3 -c "import json,sys; print(json.dumps({'content': sys.argv[1]}))" "$CHUNK")
-            HTTP_CODE=$(curl -s -o /tmp/discord_response.txt -w "%{http_code}" \
-              -H "Content-Type: application/json" \
-              -d "$PAYLOAD" \
-              "$WEBHOOK")
-            echo "Discord response: $HTTP_CODE"
-            if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
-              echo "ERROR: Discord webhook returned $HTTP_CODE"
-              cat /tmp/discord_response.txt
-              FAILED=1
-            fi
-            sleep 1
+          OVERALL_FAILED=0
+          for REPORT in $CHANGED; do
+            echo "Sending report: $REPORT"
+            send_report "$REPORT" || OVERALL_FAILED=1
           done
 
-          if [ "$FAILED" -eq 1 ]; then
-            echo "One or more chunks failed to send to Discord."
+          if [ "$OVERALL_FAILED" -eq 1 ]; then
+            echo "One or more reports failed to send to Discord."
             exit 1
           fi
         env:
