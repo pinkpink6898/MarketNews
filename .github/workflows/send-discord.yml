@@ -2,6 +2,8 @@ name: Send Market Report to Discord
 
 on:
   push:
+    branches:
+      - main
     paths:
       - 'reports/**'
 

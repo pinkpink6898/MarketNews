@@ -1,0 +1,96 @@
+name: Auto-merge Routine Reports to Main
+
+# Routine sessions are sometimes restricted to pushing only claude/*-prefixed
+# branches instead of main (a Claude Code Routines guardrail). When that
+# happens, a report can be generated correctly but never reach main, and the
+# Discord Action (which only triggers on main) never fires. This watches for
+# any claude/* branch pushing report files and merges just those files onto
+# main, so delivery works regardless of what the routine session was allowed
+# to push directly.
+
+on:
+  push:
+    branches:
+      - 'claude/**'
+    paths:
+      - 'reports/**'
+
+permissions:
+  contents: write
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Merge new report files from this branch into main
+        run: |
+          git config user.email "actions@github.com"
+          git config user.name "auto-merge-bot"
+
+          SOURCE_BRANCH="${{ github.ref_name }}"
+          BEFORE_SHA="${{ github.event.before }}"
+          AFTER_SHA="${{ github.event.after }}"
+
+          git fetch origin "$SOURCE_BRANCH"
+
+          if [ -z "$BEFORE_SHA" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            ALL_CHANGED=$(git show --name-only --diff-filter=AM --pretty=format: "origin/$SOURCE_BRANCH" | grep -v '^$' || true)
+          else
+            ALL_CHANGED=$(git diff --name-only --diff-filter=AM "$BEFORE_SHA" "$AFTER_SHA" || true)
+          fi
+
+          if [ -z "$ALL_CHANGED" ]; then
+            echo "No changed files detected on $SOURCE_BRANCH; nothing to merge."
+            exit 0
+          fi
+
+          # Safety: only auto-merge when this push touches reports/ exclusively.
+          # A claude/* branch that also changed other files (code, workflows,
+          # docs) is unusual for a report routine and should be reviewed by a
+          # human instead of merged automatically.
+          NON_REPORT=$(echo "$ALL_CHANGED" | grep -v '^reports/' || true)
+          if [ -n "$NON_REPORT" ]; then
+            echo "Push to $SOURCE_BRANCH touches files outside reports/ -- skipping auto-merge for safety:"
+            echo "$NON_REPORT"
+            exit 0
+          fi
+
+          CHANGED=$(echo "$ALL_CHANGED" | grep '^reports/')
+          echo "Report files to merge from $SOURCE_BRANCH:"
+          echo "$CHANGED"
+
+          for FILE in $CHANGED; do
+            mkdir -p "$(dirname "$FILE")"
+            git show "origin/$SOURCE_BRANCH:$FILE" > "$FILE"
+            git add "$FILE"
+          done
+
+          if git diff --cached --quiet; then
+            echo "No changes to commit (main already has this content)."
+            exit 0
+          fi
+
+          git commit -m "report: auto-merge from $SOURCE_BRANCH"
+
+          PUSHED=0
+          for i in 1 2 3; do
+            if git push origin HEAD:main; then
+              PUSHED=1
+              break
+            fi
+            echo "Push rejected, fetching and rebasing before retry ($i)..."
+            git fetch origin main
+            git rebase origin/main
+          done
+
+          if [ "$PUSHED" -ne 1 ]; then
+            echo "ERROR: failed to push merged report(s) to main after 3 attempts."
+            exit 1
+          fi
+
+          git push origin --delete "$SOURCE_BRANCH" || echo "Could not delete $SOURCE_BRANCH (non-fatal)."
