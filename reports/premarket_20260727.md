@@ -60,3 +60,4 @@
 
 ---
 📡 資料來源說明：本次執行環境網路政策封鎖 NewsAPI/Yahoo/RSS 等來源（gateway 403），fetch_news.py 與 fetch_polygon.py 均無法連線，本報告完全以即時網路搜尋（Web Search）彙整編寫，中小型股跳空數據未能涵蓋完整盤前掃描，僅供參考。
+
