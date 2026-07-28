@@ -6,6 +6,15 @@ on:
       - main
     paths:
       - 'reports/**'
+  workflow_call:
+    inputs:
+      report_files:
+        description: >
+          Newline-separated report file paths to send. If omitted, the
+          files to send are derived from the triggering push's diff.
+        required: false
+        type: string
+        default: ''
 
 jobs:
   send:
@@ -27,6 +36,11 @@ jobs:
 
             if [ -z "$WEBHOOK" ]; then
               echo "ERROR: Webhook URL is empty for $REPORT. Check GitHub secret names."
+              return 1
+            fi
+
+            if [ ! -f "$REPORT" ]; then
+              echo "ERROR: $REPORT not found in checked-out tree."
               return 1
             fi
 
@@ -56,20 +70,29 @@ jobs:
             return $FAILED
           }
 
-          # Send exactly the report file(s) that this push actually added/modified,
-          # instead of re-deriving "the" report from the whole tree — a same-day
-          # premarket + postmarket pair would otherwise always resolve to whichever
-          # filename sorts alphabetically last ("premarket" > "postmarket").
-          BEFORE_SHA="${{ github.event.before }}"
-          if [ -z "$BEFORE_SHA" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
-            CHANGED=$(git show --name-only --diff-filter=AM --pretty=format: HEAD -- reports/ | grep -v '^$' || true)
+          # When called directly (workflow_call, e.g. from auto-merge-reports.yml)
+          # the caller already knows exactly which files it merged — use that
+          # instead of re-deriving from a push diff that may not exist in this
+          # invocation. Otherwise fall back to diffing the triggering push, since
+          # re-deriving "the" report from the whole tree would make a same-day
+          # premarket + postmarket pair always resolve to whichever filename
+          # sorts alphabetically last ("premarket" > "postmarket").
+          INPUT_FILES="${{ inputs.report_files }}"
+          if [ -n "$INPUT_FILES" ]; then
+            echo "Using explicitly provided report file list."
+            CHANGED="$INPUT_FILES"
           else
-            CHANGED=$(git diff --name-only --diff-filter=AM "$BEFORE_SHA" HEAD -- reports/ || true)
-          fi
+            BEFORE_SHA="${{ github.event.before }}"
+            if [ -z "$BEFORE_SHA" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
+              CHANGED=$(git show --name-only --diff-filter=AM --pretty=format: HEAD -- reports/ | grep -v '^$' || true)
+            else
+              CHANGED=$(git diff --name-only --diff-filter=AM "$BEFORE_SHA" HEAD -- reports/ || true)
+            fi
 
-          if [ -z "$CHANGED" ]; then
-            echo "No changed report files detected in this push; falling back to most recent."
-            CHANGED=$(git ls-tree -r HEAD --name-only | grep "^reports/" | sort -r | head -1)
+            if [ -z "$CHANGED" ]; then
+              echo "No changed report files detected in this push; falling back to most recent."
+              CHANGED=$(git ls-tree -r HEAD --name-only | grep "^reports/" | sort -r | head -1)
+            fi
           fi
 
           if [ -z "$CHANGED" ]; then

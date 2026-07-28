@@ -21,6 +21,8 @@ permissions:
 jobs:
   merge:
     runs-on: ubuntu-latest
+    outputs:
+      merged_files: ${{ steps.merge.outputs.merged_files }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -28,6 +30,7 @@ jobs:
           ref: main
 
       - name: Merge new report files from this branch into main
+        id: merge
         run: |
           git config user.email "actions@github.com"
           git config user.name "auto-merge-bot"
@@ -94,3 +97,21 @@ jobs:
           fi
 
           git push origin --delete "$SOURCE_BRANCH" || echo "Could not delete $SOURCE_BRANCH (non-fatal)."
+
+          {
+            echo "merged_files<<REPORT_EOF"
+            echo "$CHANGED"
+            echo "REPORT_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+  send:
+    needs: merge
+    if: needs.merge.outputs.merged_files != ''
+    # Called directly as a reusable workflow rather than relying on this job's
+    # own push to main triggering send-discord.yml's `on: push` — pushes made
+    # with the default GITHUB_TOKEN do not fire other workflows' push events
+    # (GitHub's anti-recursion guard), so that chain silently never ran.
+    uses: ./.github/workflows/send-discord.yml
+    with:
+      report_files: ${{ needs.merge.outputs.merged_files }}
+    secrets: inherit
