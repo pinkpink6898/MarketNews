@@ -1,0 +1,81 @@
+name: Report Delivery Watchdog
+
+# Runs on GitHub's own schedule, independent of the report-generation
+# routines entirely. If a routine's permissions break, its schedule stops
+# firing, or it silently fails before ever touching git, this is what
+# notices — instead of the gap only being discovered days later when
+# someone checks Discord and finds it empty.
+
+on:
+  schedule:
+    - cron: '0 14 * * *'   # ~10am ET, checks today's premarket report landed
+    - cron: '0 3 * * *'    # ~11pm ET, checks today's postmarket report landed
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  check-premarket:
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 14 * * *'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check today's premarket report landed on main
+        run: |
+          WEEKDAY=$(TZ="America/New_York" date +%u)
+          if [ "$WEEKDAY" -ge 6 ]; then
+            echo "Weekend in ET ($WEEKDAY) -- premarket not expected, skipping."
+            exit 0
+          fi
+
+          TODAY=$(TZ="America/New_York" date +%Y%m%d)
+          FILE="reports/premarket_${TODAY}.md"
+
+          if [ -f "$FILE" ]; then
+            echo "$FILE found -- OK."
+            exit 0
+          fi
+
+          echo "$FILE missing -- alerting."
+          MSG="⚠️ 今日盤前快報尚未送達（premarket report for ${TODAY} not found on main by ~10am ET）。請檢查 routine 執行狀況與 GitHub App 權限。"
+          PAYLOAD=$(python3 -c "import json,sys; print(json.dumps({'content': sys.argv[1]}))" "$MSG")
+          curl -s -o /dev/null -w "Alert HTTP status: %{http_code}\n" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD" \
+            "$DISCORD_WEBHOOK_PREMARKET"
+        env:
+          DISCORD_WEBHOOK_PREMARKET: ${{ secrets.DISCORD_WEBHOOK_PREMARKET }}
+
+  check-postmarket:
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 3 * * *'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check today's postmarket report landed on main
+        run: |
+          WEEKDAY=$(TZ="America/New_York" date +%u)
+          if [ "$WEEKDAY" -ge 6 ]; then
+            echo "Weekend in ET ($WEEKDAY) -- postmarket not required, skipping."
+            exit 0
+          fi
+
+          TODAY=$(TZ="America/New_York" date +%Y%m%d)
+          FILE="reports/postmarket_${TODAY}.md"
+
+          if [ -f "$FILE" ]; then
+            echo "$FILE found -- OK."
+            exit 0
+          fi
+
+          echo "$FILE missing -- alerting."
+          MSG="⚠️ 今日盤後回顧尚未送達（postmarket report for ${TODAY} not found on main by ~11pm ET）。請檢查 routine 執行狀況與 GitHub App 權限。"
+          PAYLOAD=$(python3 -c "import json,sys; print(json.dumps({'content': sys.argv[1]}))" "$MSG")
+          curl -s -o /dev/null -w "Alert HTTP status: %{http_code}\n" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD" \
+            "$DISCORD_WEBHOOK_POSTMARKET"
+        env:
+          DISCORD_WEBHOOK_POSTMARKET: ${{ secrets.DISCORD_WEBHOOK_POSTMARKET }}
