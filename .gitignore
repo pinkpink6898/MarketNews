@@ -1,3 +1,4 @@
 *.skill
 routine-setup-guide.html
 .claude/
+__pycache__/
